@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 @Service
 public class ItemService {
@@ -448,24 +449,13 @@ public class ItemService {
                         ? game.getPlayer().getCurrentNode()
                         : game.getBoss().getCurrentNode();
 
-        List<MapEffect> removableEffects =
-                game.getMapEffects()
-                        .stream()
-                        .filter(effect ->
-                                effect.isBelongsToPlayer() != playerSide
-                        )
-                        .filter(effect ->
-                                effect.getType() == MapEffectType.WIRE
-                                        ||
-                                        effect.getType() == MapEffectType.BEARTRAP
-                        )
-                        .filter(effect ->
-                                canReachWithShears(
-                                        currentNode,
-                                        effect
-                                )
-                        )
-                        .toList();
+        List<MapEffect> removableEffects = game.getMapEffects()
+                .stream()
+                .filter(effect -> effect.isBelongsToPlayer() != playerSide)
+                .filter(effect -> effect.getType() == MapEffectType.WIRE
+                                        || effect.getType() == MapEffectType.BEARTRAP)
+                .filter(effect -> canReachWithShears(currentNode, effect))
+                .toList();
 
         if (removableEffects.isEmpty()) {
             logService.itemUsed(
@@ -476,20 +466,31 @@ public class ItemService {
             return;
         }
 
-        Random random = new Random();
+        String revealedList = removableEffects.stream()
+                .map(this::formatEffectDescription)
+                .collect(Collectors.joining(", "));
 
-        MapEffect removed =
-                removableEffects.get(
-                        random.nextInt(removableEffects.size())
-                );
+        logService.itemUsed(
+                game,
+                playerSide,
+                "The shears reveal these items: [" + revealedList + "]"
+        );
+
+        Random random = new Random();
+        MapEffect removed = removableEffects.get(random.nextInt(removableEffects.size()));
 
         game.getMapEffects().remove(removed);
+
+        String removalLocation = (removed.getType() == MapEffectType.WIRE)
+                ? "between node " + removed.getFirstNode() + " and node " + removed.getSecondNode()
+                : "from node " + removed.getFirstNode();
 
         logService.itemUsed(
                 game,
                 playerSide,
                 "You removed an enemy "
                         + removed.getType().name().toLowerCase()
+                        + " " + removalLocation
         );
 
         logShearsRemoval(
@@ -660,6 +661,17 @@ public class ItemService {
                 playerSide,
                 "You started charging " + itemName + "."
         );
+    }
+
+    private String formatEffectDescription(MapEffect effect) {
+        String typeName = effect.getType().name().charAt(0)
+                + effect.getType().name().substring(1).toLowerCase();
+
+        if (effect.getType() == MapEffectType.WIRE) {
+            return typeName + " between node " + effect.getFirstNode() + " and node " + effect.getSecondNode();
+        } else {
+            return typeName + " in node " + effect.getFirstNode();
+        }
     }
 
     private void logShearsRemoval(
